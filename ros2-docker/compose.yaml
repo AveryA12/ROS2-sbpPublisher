@@ -1,0 +1,24 @@
+# compose.yaml
+services:
+  ros2:
+    build: .
+    image: ros2-lab:humble
+    container_name: ros2-lab
+    network_mode: host               # important on Linux
+    environment:
+      - ROS_DOMAIN_ID=42             # pick any 0-232; use the same on all machines
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=file:///root/workspace/cyclone_dds.xml
+      - CYCLONEDDS_LOG_LEVEL=trace
+    stdin_open: true
+    tty: true
+    command: [ "bash" ]
+    volumes:
+      - ./:/root/workspace
+    devices:
+      - /dev/serial/by-id/usb-Swift_Navigation_Piksi_Multi_06fd2ce5f7dd445384702ff6d89ae742-if00:/dev/ttyACM0
+    device_cgroup_rules:
+      - 'c 166:* rmw'
+      - 'c 188:* rmw'
+    group_add:
+      - dialout

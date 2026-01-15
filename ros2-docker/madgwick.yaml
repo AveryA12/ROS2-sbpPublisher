@@ -1,0 +1,9 @@
+imu_filter_madgwick:
+  ros__parameters:
+    use_mag: false
+    world_frame: enu
+    publish_tf: false
+    imu_topic: "/imu/data_raw"
+    gain: 0.05        # 0.02–0.1; increase if motion is snappy
+    zeta: 0.001       # small gyro drift compensation
+

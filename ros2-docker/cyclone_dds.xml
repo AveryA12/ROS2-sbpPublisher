@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface name="eth0" />
+      </Interfaces>
+      <AllowMulticast>false</AllowMulticast>
+    </General>
+
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <Peers>
+        <Peer address="192.168.130.200"/>
+        <Peer address="192.168.130.100"/>
+        <Peer address="192.168.0.69"/>
+        <Peer address="192.168.0.15"/>
+      </Peers>
+      <MaxAutoParticipantIndex>100</MaxAutoParticipantIndex>
+    </Discovery>
+  <!-- <Tracing>
+    <Verbosity>config</Verbosity>
+    <OutputFile>
+  	  ${HOME}/ws/cdds.log.${CYCLONEDDS_PID}
+    </OutputFile>
+  </Tracing> -->
+  </Domain>
+
+</CycloneDDS>
