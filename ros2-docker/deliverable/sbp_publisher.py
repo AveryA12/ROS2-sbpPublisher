@@ -13,6 +13,8 @@ from sbp.client.drivers.pyserial_driver import PySerialDriver
 from sbp.client.framer import Framer
 from sbp.navigation import MsgPosLLH, MsgVelNED
 from sbp.mag import MsgMagRaw
+from sbp.navigation import MsgPosLLHCov
+
 
 try:
     from sbp.imu import MsgImuRaw
@@ -63,48 +65,73 @@ class SBP2ROS(Node):
             if msg is None:
                 break
 
-            # ---------------- GPS ----------------
+            # ---------------- H and V accuracy from PosLLH Message ----------------
             if isinstance(msg, MsgPosLLH):
-                fix = NavSatFix()
-                fix.header.stamp = self.get_clock().now().to_msg()
-                fix.header.frame_id = self.frame_id
-
-                fix.status.status = (
-                    NavSatStatus.STATUS_FIX
-                    if getattr(msg, "n_sats", 0) >= 4
-                    else NavSatStatus.STATUS_NO_FIX
-                )
-
-                fix.status.service = (
-                    NavSatStatus.SERVICE_GPS
-                    | NavSatStatus.SERVICE_GLONASS
-                    | NavSatStatus.SERVICE_GALILEO
-                )
-
-                fix.latitude = msg.lat
-                fix.longitude = msg.lon
-                fix.altitude = msg.height
-
                 hacc_mm = getattr(msg, "h_accuracy", 5000)
                 vacc_mm = getattr(msg, "v_accuracy", 8000)
 
-                fix.position_covariance = [0.0] * 9
-                fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
-
-                self.fix_pub.publish(fix)
 
                 # Accuracy publisher
                 hacc_m = float(hacc_mm) / 1000.0
                 vacc_m = float(vacc_mm) / 1000.0
 
                 acc_msg = Vector3Stamped()
-                acc_msg.header.stamp = fix.header.stamp
+                acc_msg.header.stamp = self.get_clock().now().to_msg()
                 acc_msg.header.frame_id = self.frame_id
                 acc_msg.vector.x = hacc_m
                 acc_msg.vector.y = 0.0
                 acc_msg.vector.z = vacc_m
 
                 self.acc_pub.publish(acc_msg)
+
+            # ---LLH lat,lon, heigh, and covariance message---
+            elif isinstance(msg, MsgPosLLHCov):
+                # MsgPosLLH provides NED covariance terms in meters^2:
+                # cov_n_n, cov_n_e, cov_n_d, cov_e_e, cov_e_d, cov_d_d
+                # Gets NED covariance and converts to ENU for NavSatFix covariance
+                fix = NavSatFix()
+                fix.header.stamp = self.get_clock().now().to_msg()
+                fix.header.frame_id = self.frame_id
+
+                # If you want to be conservative, you can leave STATUS_NO_FIX until you
+                # also verify a separate status message, but usually this is fine:
+                fix.status.status = NavSatStatus.STATUS_FIX
+                fix.status.service = (
+                    NavSatStatus.SERVICE_GPS
+                    | NavSatStatus.SERVICE_GLONASS
+                    | NavSatStatus.SERVICE_GALILEO
+                )
+
+                # Position
+                fix.latitude = float(msg.lat)
+                fix.longitude = float(msg.lon)
+                fix.altitude = float(msg.height)
+
+                # Covariance: SBP gives NED covariance in meters^2
+                cov_n_n = float(msg.cov_n_n)
+                cov_n_e = float(msg.cov_n_e)
+                cov_n_d = float(msg.cov_n_d)
+                cov_e_e = float(msg.cov_e_e)
+                cov_e_d = float(msg.cov_e_d)
+                cov_d_d = float(msg.cov_d_d)
+
+                # Convert NED -> ENU (NavSatFix expects ENU, row-major).
+                # ENU: x=E, y=N, z=U where U = -D
+                Cxx = cov_e_e          # E,E
+                Cyy = cov_n_n          # N,N
+                Czz = cov_d_d          # U,U (variance unchanged)
+                Cxy = cov_n_e          # E,N
+                Cxz = -cov_e_d         # E,U (sign flip)
+                Cyz = -cov_n_d         # N,U (sign flip)
+
+                fix.position_covariance = [
+                    Cxx, Cxy, Cxz,
+                    Cxy, Cyy, Cyz,
+                    Cxz, Cyz, Czz
+                ]
+                fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_KNOWN
+
+                self.fix_pub.publish(fix)
 
             # ---------------- RAW IMU ----------------
             elif HAVE_IMU and isinstance(msg, MsgImuRaw):
